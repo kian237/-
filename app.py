@@ -1,17 +1,38 @@
 
 
-
-from flask import Flask, request, redirect, url_for, render_template_string
+import os
 import sqlite3
+import uuid
 from datetime import datetime
 
+from flask import (
+    Flask, request, redirect, url_for,
+    render_template_string, flash
+)
+from werkzeug.utils import secure_filename
+
+
+# ==========================================
+# تنظیمات اصلی
+# ==========================================
+
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "amlakan-iran-secret-key")
+
 DATABASE = "amlakan.db"
+UPLOAD_FOLDER = os.path.join("static", "uploads")
+
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["MAX_CONTENT_LENGTH"] = 6 * 1024 * 1024
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
-# =====================================
-# DATABASE
-# =====================================
+# ==========================================
+# دیتابیس
+# ==========================================
 
 def get_db():
     db = sqlite3.connect(DATABASE)
@@ -25,18 +46,45 @@ def init_db():
     db.execute("""
         CREATE TABLE IF NOT EXISTS properties (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            city TEXT NOT NULL,
-            price TEXT NOT NULL,
-            area INTEGER NOT NULL,
-            rooms INTEGER NOT NULL,
-            kind TEXT NOT NULL,
-            image TEXT NOT NULL,
+            title TEXT,
+            city TEXT,
+            price TEXT,
+            area TEXT,
+            rooms TEXT,
+            kind TEXT,
+            image TEXT,
             description TEXT,
             created_at TEXT
         )
     """)
 
+    # اضافه کردن ستون‌های جدید به دیتابیس قدیمی
+    new_columns = {
+        "property_type": "TEXT DEFAULT 'آپارتمان'",
+        "address": "TEXT DEFAULT ''",
+        "floor": "TEXT DEFAULT ''",
+        "building_age": "TEXT DEFAULT ''",
+        "parking": "TEXT DEFAULT 'ندارد'",
+        "elevator": "TEXT DEFAULT 'ندارد'",
+        "warehouse": "TEXT DEFAULT 'ندارد'"
+    }
+
+    existing_columns = [
+        row["name"]
+        for row in db.execute(
+            "PRAGMA table_info(properties)"
+        ).fetchall()
+    ]
+
+    for column, definition in new_columns.items():
+        if column not in existing_columns:
+            db.execute(
+                f"ALTER TABLE properties ADD COLUMN {column} {definition}"
+            )
+
+    db.commit()
+
+    # آگهی‌های نمونه، فقط در اولین اجرای دیتابیس
     count = db.execute(
         "SELECT COUNT(*) FROM properties"
     ).fetchone()[0]
@@ -44,64 +92,106 @@ def init_db():
     if count == 0:
         samples = [
             (
-                "آپارتمان لوکس و مدرن",
+                "آپارتمان لوکس و نورگیر",
                 "تهران",
-                "۱۲ میلیارد تومان",
-                500, 3, "فروش",
-                "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1000",
-                "آپارتمان زیبا با طراحی مدرن، نورگیری عالی و امکانات کامل.",
-                datetime.now().strftime("%Y-%m-%d")
+                "۸,۵۰۰,۰۰۰,۰۰۰ تومان",
+                "۱۲۰",
+                "۳",
+                "فروش",
+                "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=900",
+                "آپارتمان زیبا با طراحی مدرن و نورگیری عالی",
+                "۱۴۰۵/۰۸/۲۶",
+                "آپارتمان",
+                "تهران، منطقه ۲",
+                "۳",
+                "۵",
+                "دارد",
+                "دارد",
+                "دارد"
             ),
             (
-                "ویلای مدرن با استخر",
-                "شمال",
-                "۱۸ میلیارد تومان",
-                300, 4, "فروش",
-                "https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=1000",
-                "ویلای مدرن با محوطه سرسبز، استخر و فضای آرام.",
-                datetime.now().strftime("%Y-%m-%d")
-            ),
-            (
-                "خانه شیک و دلباز",
-                "اصفهان",
-                "۶۰ میلیون تومان",
-                120, 2, "اجاره",
-                "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=1000",
-                "خانه‌ای دلباز با دسترسی مناسب به امکانات شهری.",
-                datetime.now().strftime("%Y-%m-%d")
+                "خانه ویلایی با حیاط بزرگ",
+                "کرج",
+                "۶,۰۰۰,۰۰۰,۰۰۰ تومان",
+                "۲۰۰",
+                "۴",
+                "فروش",
+                "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=900",
+                "خانه ویلایی با حیاط زیبا و پارکینگ",
+                "۱۴۰۵/۰۸/۲۶",
+                "خانه ویلایی",
+                "کرج، مهرشهر",
+                "همکف",
+                "۸",
+                "دارد",
+                "ندارد",
+                "دارد"
             )
         ]
 
         db.executemany("""
-            INSERT INTO properties
-            (title, city, price, area, rooms, kind, image,
-             description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO properties (
+                title, city, price, area, rooms, kind,
+                image, description, created_at,
+                property_type, address, floor, building_age,
+                parking, elevator, warehouse
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, samples)
 
-    db.commit()
+        db.commit()
+
     db.close()
 
 
 init_db()
 
 
-# =====================================
-# CSS
-# =====================================
+# ==========================================
+# ابزارهای کمکی
+# ==========================================
+
+def allowed_file(filename):
+    return (
+        "." in filename
+        and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+    )
+
+
+def image_src(property_item):
+    image = property_item["image"] or ""
+
+    if image.startswith("http://") or image.startswith("https://"):
+        return image
+
+    return url_for("static", filename=image)
+
+
+def get_properties():
+    db = get_db()
+    properties = db.execute(
+        "SELECT * FROM properties ORDER BY id DESC"
+    ).fetchall()
+    db.close()
+    return properties
+
+
+# ==========================================
+# طراحی و استایل سایت
+# ==========================================
 
 STYLE = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap');
 
 :root {
-    --bg: #0b0e13;
-    --card: #151b25;
-    --gold: #e8bd63;
-    --text: #ffffff;
-    --muted: #a7afbd;
-    --header-bg: #080b10ee;
-    --input-bg: #0c111a;
+    --bg: #101827;
+    --card: #1b293b;
+    --gold: #f5b942;
+    --text: #f8fafc;
+    --muted: #aab7c8;
+    --header-bg: #142033;
+    --input-bg: #111d2d;
 }
 
 * {
@@ -110,1235 +200,971 @@ STYLE = """
 
 body {
     margin: 0;
-    font-family: 'Vazirmatn', sans-serif;
     background: var(--bg);
     color: var(--text);
+    font-family: 'Vazirmatn', Tahoma, sans-serif;
     direction: rtl;
-    transition: background .25s, color .25s;
+    transition: background .4s, color .4s;
 }
 
 a {
-    text-decoration: none;
     color: inherit;
+    text-decoration: none;
 }
 
-.container {
-    width: 92%;
-    max-width: 1250px;
-    margin: auto;
+button, input, select, textarea {
+    font-family: inherit;
 }
 
 header {
-    padding: 15px 0;
-    border-bottom: 1px solid #ffffff14;
     background: var(--header-bg);
+    padding: 16px 5%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid #ffffff12;
     position: sticky;
     top: 0;
-    z-index: 10;
-    backdrop-filter: blur(15px);
-}
-
-.nav {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
+    z-index: 20;
 }
 
 .logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 21px;
+    font-size: 25px;
     font-weight: 900;
+    background: linear-gradient(90deg,#f5b942,#ff6b6b,#5eead4,#f5b942);
+    background-size: 300%;
+    -webkit-background-clip: text;
+    color: transparent;
+    animation: logoColor 5s linear infinite;
 }
 
-.logo svg {
-    width: 45px;
-    height: 45px;
-}
-
-.logo-text span {
-    color: var(--gold);
+@keyframes logoColor {
+    0% { background-position: 0%; }
+    100% { background-position: 300%; }
 }
 
 .nav-links {
     display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 23px;
-    color: #d4d8df;
-    font-size: 13px;
+}
+
+.nav-links a {
+    color: var(--muted);
+    font-size: 14px;
 }
 
 .nav-links a:hover {
     color: var(--gold);
 }
 
-.btn, button, a.button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    border: none;
-    border-radius: 9px;
-    padding: 8px 14px;
-    background: linear-gradient(135deg, var(--gold), #bd8c37);
-    color: #17120a;
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 700;
+.btn {
+    background: var(--gold);
+    color: #172033;
+    border: 0;
+    padding: 11px 20px;
+    border-radius: 12px;
+    font-weight: 800;
     cursor: pointer;
-    transition: .2s;
+    display: inline-block;
+    text-align: center;
 }
 
-.btn:hover, button:hover, a.button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 16px #0004;
+.btn:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+}
+
+.container {
+    width: 90%;
+    max-width: 1200px;
+    margin: auto;
 }
 
 .hero {
-    padding: 75px 0 55px;
+    padding: 75px 25px;
     text-align: center;
     background:
-        linear-gradient(#0b0e13d9, #0b0e13f2),
-        url('https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?w=1600')
-        center/cover;
+        linear-gradient(120deg,#172b45ee,#182a3eee),
+        url("https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1500") center/cover;
+    border-radius: 0 0 30px 30px;
 }
 
 .hero h1 {
-    font-size: clamp(30px, 5vw, 55px);
+    font-size: clamp(28px,5vw,45px);
     margin: 0 0 15px;
-    font-weight: 900;
-}
-
-.hero h1 span {
-    color: var(--gold);
 }
 
 .hero p {
-    color: #d1d5dc;
-    font-size: 15px;
-    margin-bottom: 28px;
+    color: #d0d9e7;
+    margin-bottom: 25px;
 }
 
 .search-box {
     max-width: 750px;
-    margin: auto;
-    background: #ffffff12;
-    border: 1px solid #ffffff25;
-    border-radius: 14px;
-    padding: 9px;
+    margin: 30px auto 0;
     display: flex;
-    gap: 9px;
-    backdrop-filter: blur(12px);
+    gap: 10px;
+    background: #ffffff12;
+    padding: 12px;
+    border-radius: 15px;
 }
 
 .search-box input {
     flex: 1;
     min-width: 0;
-    background: transparent;
+    background: white;
+    color: #172033;
     border: none;
+    padding: 13px;
+    border-radius: 10px;
     outline: none;
-    color: white;
-    padding: 10px;
-    font-family: inherit;
-    font-size: 14px;
-}
-
-.search-box input::placeholder {
-    color: #c2c6ce;
 }
 
 .section-title {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin: 42px 0 23px;
-    gap: 15px;
+    margin: 45px 0 22px;
+    font-size: 25px;
 }
 
-.section-title h2 {
-    font-size: 23px;
-    margin: 0;
-}
-
-.gold {
-    color: var(--gold);
-}
-
-.grid {
+.property-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 21px;
-    padding-bottom: 50px;
+    grid-template-columns: repeat(auto-fit,minmax(250px,1fr));
+    gap: 22px;
+    padding-bottom: 45px;
 }
 
-.card {
+.property-card {
     background: var(--card);
     border: 1px solid #ffffff12;
-    border-radius: 16px;
+    border-radius: 18px;
     overflow: hidden;
-    transition: .3s;
-    display: block;
+    transition: .25s;
 }
 
-.card:hover {
+.property-card:hover {
     transform: translateY(-5px);
     border-color: var(--gold);
-    box-shadow: 0 15px 35px #0005;
 }
 
-.card img {
+.property-card img {
     width: 100%;
-    height: 215px;
+    height: 200px;
     object-fit: cover;
-    display: block;
+    background: #26374b;
 }
 
 .card-content {
     padding: 17px;
 }
 
-.card h3 {
+.card-content h3 {
     margin: 0 0 12px;
-    font-size: 17px;
+    font-size: 18px;
 }
 
 .muted {
     color: var(--muted);
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .price {
     color: var(--gold);
     font-size: 17px;
     font-weight: 900;
-    margin: 13px 0;
+    margin: 15px 0;
 }
 
-.card-footer {
-    border-top: 1px solid #ffffff12;
-    padding-top: 12px;
-    display: flex;
-    justify-content: space-between;
-    color: #c6cbd3;
+.tag {
+    display: inline-block;
+    background: #f5b94220;
+    color: var(--gold);
+    border-radius: 8px;
+    padding: 5px 10px;
     font-size: 12px;
 }
 
-.form-box {
-    max-width: 700px;
-    margin: 45px auto;
-    padding: 28px;
+.form-card, .detail-card {
     background: var(--card);
-    border: 1px solid #ffffff18;
-    border-radius: 18px;
+    border: 1px solid #ffffff12;
+    padding: 25px;
+    border-radius: 20px;
+    margin: 35px auto;
+    max-width: 900px;
 }
 
-.form-box h2 {
-    margin-top: 0;
-    color: var(--gold);
+.form-grid, .info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit,minmax(210px,1fr));
+    gap: 17px;
 }
 
-.form-box input,
-.form-box textarea,
-.form-box select {
-    width: 100%;
-    margin: 8px 0 15px;
-    padding: 11px;
-    border-radius: 9px;
-    border: 1px solid #ffffff20;
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.field label {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.field input, .field select, .field textarea {
     background: var(--input-bg);
+    border: 1px solid #ffffff20;
+    border-radius: 10px;
+    padding: 13px;
     color: var(--text);
-    font-family: inherit;
-    font-size: 13px;
     outline: none;
+    width: 100%;
 }
 
-.form-box label {
-    font-size: 13px;
-    color: var(--text);
+.field input:focus, .field select:focus, .field textarea:focus {
+    border-color: var(--gold);
 }
 
-.form-box textarea {
+.field textarea {
     min-height: 120px;
     resize: vertical;
 }
 
-.detail {
-    margin: 40px auto;
-    max-width: 1000px;
-    background: var(--card);
-    border-radius: 18px;
-    overflow: hidden;
-    border: 1px solid #ffffff18;
+.full {
+    grid-column: 1 / -1;
 }
 
-.detail img {
+.preview {
     width: 100%;
-    max-height: 500px;
+    max-height: 260px;
     object-fit: cover;
-    display: block;
+    border-radius: 12px;
+    display: none;
+    margin-top: 12px;
 }
 
-.detail-content {
-    padding: 28px;
-}
-
-.detail-content h1 {
-    font-size: 28px;
-}
-
-.info-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 14px;
-    margin: 23px 0;
+.detail-image {
+    width: 100%;
+    max-height: 450px;
+    object-fit: cover;
+    border-radius: 15px;
 }
 
 .info-item {
-    background: #ffffff09;
-    padding: 16px;
-    border-radius: 11px;
+    background: var(--input-bg);
+    padding: 15px;
+    border-radius: 12px;
+    border: 1px solid #ffffff10;
 }
 
-.info-item small {
-    color: var(--muted);
+.info-item span {
     display: block;
-    margin-bottom: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 7px;
 }
 
 .info-item strong {
-    color: var(--gold);
+    font-size: 15px;
 }
 
-.description {
-    line-height: 2.2;
-    color: var(--text);
+.notice {
+    background: #f5b94218;
+    color: var(--gold);
+    padding: 13px;
+    border-radius: 10px;
+    margin: 15px 0;
 }
 
 footer {
     text-align: center;
-    padding: 35px 10px;
+    padding: 30px;
     color: var(--muted);
-    border-top: 1px solid #ffffff15;
-    margin-top: 30px;
-}
-
-.empty {
-    text-align: center;
-    color: var(--muted);
-    padding: 50px 10px;
-}
-
-/* Personal theme panel */
-
-.theme-toggle {
-    white-space: nowrap;
+    border-top: 1px solid #ffffff12;
+    margin-top: 40px;
 }
 
 .theme-panel {
     position: fixed;
-    top: 82px;
-    left: 4%;
-    z-index: 30;
-    width: min(340px, 92vw);
-    padding: 20px;
-    background: var(--card);
-    color: var(--text);
-    border: 1px solid #ffffff25;
-    border-radius: 16px;
-    box-shadow: 0 18px 50px #0008;
-    display: none;
+    left: 15px;
+    bottom: 15px;
+    z-index: 50;
 }
 
-.theme-panel.open {
+.theme-toggle {
+    border: none;
+    border-radius: 50%;
+    width: 52px;
+    height: 52px;
+    background: var(--gold);
+    font-size: 23px;
+    cursor: pointer;
+}
+
+.theme-content {
+    display: none;
+    background: var(--card);
+    border: 1px solid #ffffff30;
+    border-radius: 15px;
+    padding: 16px;
+    width: 240px;
+    margin-bottom: 10px;
+    box-shadow: 0 10px 40px #0005;
+}
+
+.theme-content.show {
     display: block;
 }
 
-.theme-panel h3 {
-    margin: 0 0 14px;
-    color: var(--gold);
-}
-
-.theme-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 12px 0;
-    font-size: 13px;
-}
-
-.theme-panel input[type="color"] {
-    width: 52px;
-    height: 36px;
-    padding: 2px;
-    border: 1px solid #ffffff30;
+.theme-content button {
+    border: 0;
+    padding: 8px;
     border-radius: 8px;
-    background: transparent;
+    margin: 4px;
     cursor: pointer;
 }
 
-.theme-presets {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    margin: 14px 0;
+.theme-content input[type=color] {
+    width: 100%;
+    height: 38px;
+    margin: 7px 0;
 }
 
-.theme-preset {
-    min-height: 36px;
-    border: 1px solid #ffffff30;
-    border-radius: 8px;
-    padding: 6px;
-    color: white;
-    font-family: inherit;
-    font-size: 11px;
-    cursor: pointer;
+.flash {
+    background: #1d8055;
+    padding: 12px;
+    border-radius: 10px;
+    margin: 15px 0;
 }
 
-.theme-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 14px;
-}
-
-.theme-actions button {
-    flex: 1;
-}
-
-@media(max-width: 650px) {
+@media(max-width:650px) {
+    header {
+        justify-content: center;
+    }
     .nav-links {
-        display: none;
+        justify-content: center;
     }
-
     .hero {
-        padding: 50px 0;
+        padding: 50px 15px;
     }
-
     .search-box {
         flex-direction: column;
     }
-
-    .detail-content {
-        padding: 19px;
-    }
-
-    .btn, button, a.button {
-        padding: 7px 12px;
-        font-size: 12px;
+    .form-card, .detail-card {
+        padding: 17px;
     }
 }
 </style>
 """
 
 
-# =====================================
-# HEADER
-# =====================================
+# ==========================================
+# هدر و پنل رنگ
+# ==========================================
 
 HEADER = """
 <header>
-    <div class="container nav">
+    <a href="/" class="logo">املاکان ایران</a>
 
-        <a href="/" class="logo">
+    <nav class="nav-links">
+        <a href="/">🏠 صفحه اصلی</a>
+        <a href="/#properties">🏢 مشاهده املاک</a>
+        <a href="/add">➕ ثبت آگهی</a>
+    </nav>
 
-            <svg viewBox="0 0 100 100" fill="none"
-                 xmlns="http://www.w3.org/2000/svg">
-
-                <defs>
-                    <linearGradient id="logoGradient"
-                        x1="0" y1="0" x2="100" y2="100">
-
-                        <stop id="logoStop1" offset="0%"
-                              stop-color="#f5d58c"/>
-
-                        <stop id="logoStop2" offset="100%"
-                              stop-color="#b47d29"/>
-
-                    </linearGradient>
-                </defs>
-
-                <path d="M12 48 L50 15 L88 48"
-                    stroke="url(#logoGradient)"
-                    stroke-width="8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"/>
-
-                <path d="M23 44 V85 H77 V44"
-                    stroke="url(#logoGradient)"
-                    stroke-width="7"
-                    stroke-linejoin="round"/>
-
-                <path d="M43 85 V58 H58 V85"
-                    stroke="url(#logoGradient)"
-                    stroke-width="6"/>
-
-                <circle cx="50" cy="39" r="5"
-                    fill="url(#logoGradient)"/>
-
-            </svg>
-
-            <div class="logo-text">
-                املاکان <span>ایران</span>
-            </div>
-
-        </a>
-
-        <nav class="nav-links">
-            <a href="/">صفحه اصلی</a>
-            <a href="/#properties">آگهی املاک</a>
-            <a href="/add">ثبت آگهی</a>
-        </nav>
-
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-
-            <button type="button"
-                    class="btn theme-toggle"
-                    id="themeToggle">
-                🎨 رنگ سایت
-            </button>
-
-            <a href="/add" class="btn">
-                ثبت آگهی جدید
-            </a>
-
-        </div>
-
-    </div>
+    <a href="/add" class="btn">+ ثبت آگهی رایگان</a>
 </header>
 
-<div class="theme-panel" id="themePanel">
+<div class="theme-panel">
+    <div class="theme-content" id="themeContent">
+        <strong>🎨 تنظیم رنگ سایت</strong>
+        <p class="muted">رنگ دلخواه خودت را انتخاب کن</p>
 
-    <h3>تنظیمات ظاهر سایت 🎨</h3>
+        <label>پس زمینه</label>
+        <input type="color" id="bgColor" value="#101827">
 
-    <div class="theme-row">
-        <label for="themeBg">رنگ پس‌زمینه</label>
-        <input type="color" id="themeBg" value="#0b0e13">
+        <label>رنگ کارت‌ها</label>
+        <input type="color" id="cardColor" value="#1b293b">
+
+        <label>رنگ اصلی</label>
+        <input type="color" id="goldColor" value="#f5b942">
+
+        <button onclick="saveTheme()">ذخیره رنگ‌ها</button>
+        <button onclick="resetTheme()">بازنشانی</button>
     </div>
 
-    <div class="theme-row">
-        <label for="themeCard">رنگ کارت‌ها</label>
-        <input type="color" id="themeCard" value="#151b25">
-    </div>
-
-    <div class="theme-row">
-        <label for="themeAccent">رنگ اصلی و دکمه‌ها</label>
-        <input type="color" id="themeAccent" value="#e8bd63">
-    </div>
-
-    <div class="theme-row">
-        <label for="themeText">رنگ نوشته‌ها</label>
-        <input type="color" id="themeText" value="#ffffff">
-    </div>
-
-    <div class="theme-presets">
-
-        <button class="theme-preset" data-theme="gold"
-                style="background:#a77a2c">طلایی</button>
-
-        <button class="theme-preset" data-theme="blue"
-                style="background:#2468c5">آبی</button>
-
-        <button class="theme-preset" data-theme="green"
-                style="background:#21845a">سبز</button>
-
-        <button class="theme-preset" data-theme="purple"
-                style="background:#7042c7">بنفش</button>
-
-        <button class="theme-preset" data-theme="pink"
-                style="background:#bd315e">صورتی</button>
-
-        <button class="theme-preset" data-theme="orange"
-                style="background:#d35a25">نارنجی</button>
-
-    </div>
-
-    <div class="theme-actions">
-
-        <button type="button" class="btn" id="themeReset">
-            رنگ پیش‌فرض
-        </button>
-
-        <button type="button" class="btn" id="themeClose">
-            بستن
-        </button>
-
-    </div>
-
-    <p class="muted">
-        تنظیمات فقط در مرورگر شما ذخیره می‌شود.
-    </p>
-
+    <button class="theme-toggle" onclick="toggleTheme()">🎨</button>
 </div>
-"""
 
-
-# =====================================
-# JAVASCRIPT
-# =====================================
-
-SCRIPTS = """
 <script>
-
-// تغییر رنگ لوگو
-
-const logoColors = [
-    ["#f5d58c", "#b47d29"],
-    ["#76d7ff", "#2468c5"],
-    ["#ff8caa", "#bd315e"],
-    ["#8de5b0", "#21845a"],
-    ["#c6a0ff", "#7042c7"],
-    ["#ffb16b", "#d35a25"],
-    ["#f7e875", "#b99b19"]
-];
-
-let logoIndex = 0;
-
-setInterval(() => {
-
-    logoIndex = (logoIndex + 1) % logoColors.length;
-
-    const stop1 = document.getElementById("logoStop1");
-    const stop2 = document.getElementById("logoStop2");
-
-    if (stop1 && stop2) {
-        stop1.setAttribute("stop-color", logoColors[logoIndex][0]);
-        stop2.setAttribute("stop-color", logoColors[logoIndex][1]);
-    }
-
-}, 5000);
-
-
-// رنگ‌های پیش‌فرض
-
-const defaultTheme = {
-    bg: "#0b0e13",
-    card: "#151b25",
-    accent: "#e8bd63",
-    text: "#ffffff"
-};
-
-
-// قالب‌های آماده
-
-const themePresets = {
-
-    gold: {
-        bg: "#0b0e13",
-        card: "#151b25",
-        accent: "#e8bd63",
-        text: "#ffffff"
-    },
-
-    blue: {
-        bg: "#0b1422",
-        card: "#14243a",
-        accent: "#58a6ff",
-        text: "#f4f8ff"
-    },
-
-    green: {
-        bg: "#0d1b16",
-        card: "#183027",
-        accent: "#63d69a",
-        text: "#f1fff7"
-    },
-
-    purple: {
-        bg: "#171126",
-        card: "#251a3b",
-        accent: "#bd9aff",
-        text: "#fbf7ff"
-    },
-
-    pink: {
-        bg: "#21121a",
-        card: "#351d2a",
-        accent: "#ff8eb5",
-        text: "#fff5f8"
-    },
-
-    orange: {
-        bg: "#21170f",
-        card: "#352519",
-        accent: "#ffb36b",
-        text: "#fff8f0"
-    }
-
-};
-
-
-// عناصر پنل
-
-const themePanel = document.getElementById("themePanel");
-const themeToggle = document.getElementById("themeToggle");
-
-const themeInputs = {
-    bg: document.getElementById("themeBg"),
-    card: document.getElementById("themeCard"),
-    accent: document.getElementById("themeAccent"),
-    text: document.getElementById("themeText")
-};
-
-
-// اعمال رنگ‌ها
-
-function applyTheme(theme, save = true) {
-
-    const root = document.documentElement;
-
-    root.style.setProperty("--bg", theme.bg);
-    root.style.setProperty("--card", theme.card);
-    root.style.setProperty("--gold", theme.accent);
-    root.style.setProperty("--text", theme.text);
-
-    root.style.setProperty(
-        "--muted",
-        theme.text === "#ffffff" ? "#a7afbd" : theme.text + "bb"
-    );
-
-    root.style.setProperty("--header-bg", theme.bg + "ee");
-    root.style.setProperty("--input-bg", theme.bg);
-
-    Object.keys(themeInputs).forEach(key => {
-        if (themeInputs[key]) {
-            themeInputs[key].value = theme[key];
-        }
-    });
-
-    if (save) {
-        try {
-            localStorage.setItem(
-                "amlakan_personal_theme",
-                JSON.stringify(theme)
-            );
-        } catch (error) {
-            console.warn("ذخیره تنظیمات ممکن نشد.", error);
-        }
-    }
-
+function toggleTheme() {
+    document.getElementById("themeContent").classList.toggle("show");
 }
 
+function saveTheme() {
+    const theme = {
+        bg: document.getElementById("bgColor").value,
+        card: document.getElementById("cardColor").value,
+        gold: document.getElementById("goldColor").value
+    };
 
-// بارگذاری رنگ ذخیره‌شده
+    localStorage.setItem("amlakan_personal_theme", JSON.stringify(theme));
+    applyTheme(theme);
+}
 
-let savedTheme = defaultTheme;
+function applyTheme(theme) {
+    document.documentElement.style.setProperty("--bg", theme.bg);
+    document.documentElement.style.setProperty("--card", theme.card);
+    document.documentElement.style.setProperty("--gold", theme.gold);
+}
+
+function resetTheme() {
+    localStorage.removeItem("amlakan_personal_theme");
+    applyTheme({
+        bg: "#101827",
+        card: "#1b293b",
+        gold: "#f5b942"
+    });
+}
 
 try {
-
-    const storedTheme = JSON.parse(
-        localStorage.getItem("amlakan_personal_theme") || "null"
-    );
-
-    if (
-        storedTheme &&
-        ["bg", "card", "accent", "text"].every(key =>
-            typeof storedTheme[key] === "string" &&
-            /^#[0-9a-fA-F]{6}$/.test(storedTheme[key])
-        )
-    ) {
-        savedTheme = storedTheme;
-    }
-
-} catch (error) {
-    console.log("تنظیمات قبلی پیدا نشد.");
+    const saved = localStorage.getItem("amlakan_personal_theme");
+    if (saved) applyTheme(JSON.parse(saved));
+} catch (e) {
+    console.log("Theme settings unavailable");
 }
-
-applyTheme(savedTheme, false);
-
-
-// باز و بسته کردن پنل
-
-if (themeToggle && themePanel) {
-
-    themeToggle.addEventListener("click", () => {
-
-        const opened = themePanel.classList.toggle("open");
-
-        themeToggle.setAttribute(
-            "aria-expanded",
-            String(opened)
-        );
-
-    });
-
-}
-
-
-// تغییر دستی رنگ
-
-Object.keys(themeInputs).forEach(key => {
-
-    if (!themeInputs[key]) return;
-
-    themeInputs[key].addEventListener("input", () => {
-
-        const current = {};
-
-        Object.keys(themeInputs).forEach(k => {
-            current[k] = themeInputs[k].value;
-        });
-
-        applyTheme(current);
-
-    });
-
-});
-
-
-// قالب‌های آماده
-
-document.querySelectorAll(".theme-preset").forEach(button => {
-
-    button.addEventListener("click", () => {
-
-        const preset = themePresets[button.dataset.theme];
-
-        if (preset) {
-            applyTheme(preset);
-        }
-
-    });
-
-});
-
-
-// بازگشت به رنگ پیش‌فرض
-
-document.getElementById("themeReset")?.addEventListener(
-    "click",
-    () => {
-        applyTheme(defaultTheme);
-    }
-);
-
-
-// بستن پنل
-
-document.getElementById("themeClose")?.addEventListener(
-    "click",
-    () => {
-
-        themePanel?.classList.remove("open");
-
-        themeToggle?.setAttribute("aria-expanded", "false");
-
-    }
-);
-
-
-// بستن پنل با کلیک بیرون آن
-
-document.addEventListener("click", event => {
-
-    if (
-        themePanel &&
-        themeToggle &&
-        !themePanel.contains(event.target) &&
-        !themeToggle.contains(event.target)
-    ) {
-
-        themePanel.classList.remove("open");
-
-        themeToggle.setAttribute("aria-expanded", "false");
-
-    }
-
-});
-
 </script>
 """
 
 
-# =====================================
-# HOME PAGE
-# =====================================
+# ==========================================
+# قالب پایه
+# ==========================================
 
-HOME_HTML = """
+BASE_HTML = """
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
-
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>املاکان ایران | خرید، فروش و اجاره ملک</title>
-""" + STYLE + """
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }} | املاکان ایران</title>
+    {{ style|safe }}
 </head>
-
 <body>
+    {{ header|safe }}
 
-""" + HEADER + """
+    <main class="container">
+        {% with messages = get_flashed_messages() %}
+            {% for message in messages %}
+                <div class="flash">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
 
-<section class="hero">
-    <div class="container">
+        {{ content|safe }}
+    </main>
 
-        <h1>خانه رویایی خود را <span>پیدا کنید</span></h1>
-
-        <p>خرید، فروش و اجاره ملک در سراسر ایران</p>
-
-        <form class="search-box" method="GET" action="/">
-
-            <input
-                type="text"
-                name="q"
-                placeholder="نام ملک یا شهر موردنظر را وارد کنید..."
-                value="{{ query }}"
-            >
-
-            <button class="btn" type="submit">
-                جست وجوی ملک
-            </button>
-
-        </form>
-
-    </div>
-</section>
-
-<main class="container" id="properties">
-
-    <div class="section-title">
-        <h2>جدیدترین <span class="gold">آگهی‌های املاک</span></h2>
-        <a href="/add" class="gold">ثبت آگهی ←</a>
-    </div>
-
-    {% if properties %}
-
-    <div class="grid">
-
-        {% for p in properties %}
-
-        <a class="card" href="{{ url_for('property_detail', property_id=p.id) }}">
-
-            <img src="{{ p.image }}" alt="{{ p.title }}"
-                 onerror="this.src='https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1000'">
-
-            <div class="card-content">
-
-                <h3>{{ p.title }}</h3>
-
-                <p class="muted">{{ p.city }}</p>
-
-                <div class="price">{{ p.price }}</div>
-
-                <div class="card-footer">
-                    <span>{{ p.area }} متر</span>
-                    <span>{{ p.rooms }} اتاق</span>
-                    <span>{{ p.kind }}</span>
-                </div>
-
-                <p class="gold">مشاهده جزئیات ملک ←</p>
-
-            </div>
-
-        </a>
-
-        {% endfor %}
-
-    </div>
-
-    {% else %}
-
-    <div class="empty">
-        <h3>ملکی پیدا نشد!</h3>
-        <p>عبارت دیگری را جست وجو کنید یا آگهی جدید ثبت کنید.</p>
-        <a href="/add" class="btn">ثبت آگهی</a>
-    </div>
-
-    {% endif %}
-
-</main>
-
-<footer>
-    <div class="logo" style="justify-content:center">
-        املاکان <span class="gold">ایران</span>
-    </div>
-    <p>سامانه خرید، فروش و اجاره املاک در ایران</p>
-    <p>تمام حقوق محفوظ است.</p>
-</footer>
-
-""" + SCRIPTS + """
-
+    <footer>
+        © املاکان ایران - سامانه خرید، فروش و اجاره ملک
+    </footer>
 </body>
 </html>
 """
 
 
-# =====================================
-# ADD PROPERTY PAGE
-# =====================================
-
-ADD_HTML = """
-<!DOCTYPE html>
-<html lang="fa" dir="rtl">
-
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ثبت آگهی | املاکان ایران</title>
-""" + STYLE + """
-</head>
-
-<body>
-
-""" + HEADER + """
-
-<div class="container">
-
-    <form class="form-box" method="POST" action="/add">
-
-        <h2>ثبت آگهی ملک جدید</h2>
-
-        <p class="muted">
-            اطلاعات ملک خود را وارد کنید تا آگهی در سایت نمایش داده شود.
-        </p>
-
-        <label>عنوان آگهی</label>
-        <input name="title" required
-               placeholder="مثلاً آپارتمان لوکس در تهران">
-
-        <label>شهر</label>
-        <input name="city" required placeholder="مثلاً تهران">
-
-        <label>قیمت</label>
-        <input name="price" required placeholder="مثلاً ۸ میلیارد تومان">
-
-        <label>متراژ</label>
-        <input name="area" type="number" min="1"
-               required placeholder="مثلاً ۱۵۰">
-
-        <label>تعداد اتاق</label>
-        <input name="rooms" type="number" min="0"
-               required placeholder="مثلاً ۳">
-
-        <label>نوع معامله</label>
-        <select name="kind" required>
-            <option value="فروش">فروش</option>
-            <option value="اجاره">اجاره</option>
-            <option value="رهن">رهن</option>
-        </select>
-
-        <label>لینک عکس ملک</label>
-        <input name="image" type="url" required
-               placeholder="https://example.com/image.jpg">
-
-        <label>توضیحات ملک</label>
-        <textarea name="description"
-                  placeholder="توضیحات کامل ملک را بنویسید..."></textarea>
-
-        <button class="btn" type="submit">ثبت آگهی</button>
-
-    </form>
-
-</div>
-
-""" + SCRIPTS + """
-
-</body>
-</html>
-"""
-
-
-# =====================================
-# PROPERTY DETAILS
-# =====================================
-
-DETAIL_HTML = """
-<!DOCTYPE html>
-<html lang="fa" dir="rtl">
-
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ p.title }} | املاکان ایران</title>
-""" + STYLE + """
-</head>
-
-<body>
-
-""" + HEADER + """
-
-<div class="container">
-
-    <div class="detail">
-
-        <img src="{{ p.image }}" alt="{{ p.title }}"
-             onerror="this.src='https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1000'">
-
-        <div class="detail-content">
-
-            <p class="gold">{{ p.kind }} ملک</p>
-
-            <h1>{{ p.title }}</h1>
-
-            <p class="muted">شهر: {{ p.city }}</p>
-
-            <div class="price">{{ p.price }}</div>
-
-            <div class="info-grid">
-
-                <div class="info-item">
-                    <small>متراژ</small>
-                    <strong>{{ p.area }} متر مربع</strong>
-                </div>
-
-                <div class="info-item">
-                    <small>تعداد اتاق</small>
-                    <strong>{{ p.rooms }} اتاق</strong>
-                </div>
-
-                <div class="info-item">
-                    <small>نوع معامله</small>
-                    <strong>{{ p.kind }}</strong>
-                </div>
-
-                <div class="info-item">
-                    <small>شناسه آگهی</small>
-                    <strong>{{ p.id }}</strong>
-                </div>
-
-            </div>
-
-            <h3 class="gold">توضیحات ملک</h3>
-
-            <p class="description">
-                {{ p.description or "برای این ملک توضیحاتی ثبت نشده است." }}
-            </p>
-
-            <a href="/" class="btn">بازگشت به صفحه اصلی</a>
-
-        </div>
-
-    </div>
-
-</div>
-
-""" + SCRIPTS + """
-
-</body>
-</html>
-"""
-
-
-# =====================================
-# HOME ROUTE
-# =====================================
-
-@app.route("/")
-def home():
-
-    query = request.args.get("q", "").strip()
-
-    db = get_db()
-
-    if query:
-
-        properties = db.execute("""
-            SELECT * FROM properties
-            WHERE title LIKE ? OR city LIKE ?
-            ORDER BY id DESC
-        """, (f"%{query}%", f"%{query}%")).fetchall()
-
-    else:
-
-        properties = db.execute("""
-            SELECT * FROM properties
-            ORDER BY id DESC
-        """).fetchall()
-
-    db.close()
+def render_page(template, page_title="صفحه اصلی", **context):
+    rendered = render_template_string(template, **context)
 
     return render_template_string(
-        HOME_HTML,
-        properties=properties,
-        query=query
+        BASE_HTML,
+        page_title=page_title,
+        style=STYLE,
+        header=HEADER,
+        content=rendered
     )
 
 
-# =====================================
-# ADD PROPERTY ROUTE
-# =====================================
+# ==========================================
+# صفحه اصلی
+# ==========================================
+
+HOME_HTML = """
+<section class="hero">
+    <h1>خانه رویایی‌ات را پیدا کن 🏡</h1>
+    <p>خرید، فروش و اجاره ملک در سراسر ایران</p>
+
+    <a href="/add" class="btn">➕ همین حالا آگهی ثبت کن</a>
+
+    <form action="/" method="GET" class="search-box">
+        <input
+            type="text"
+            name="q"
+            placeholder="نام ملک یا شهر را وارد کن..."
+            value="{{ search }}"
+        >
+        <button class="btn" type="submit">جست‌وجو 🔍</button>
+    </form>
+</section>
+
+<div id="properties">
+    <h2 class="section-title">🏢 جدیدترین آگهی‌های املاک</h2>
+
+    {% if properties %}
+    <div class="property-grid">
+        {% for p in properties %}
+        <a href="/property/{{ p['id'] }}" class="property-card">
+            <img src="{{ image_src(p) }}" alt="{{ p['title'] }}">
+
+            <div class="card-content">
+                <span class="tag">{{ p['kind'] }}</span>
+                <h3>{{ p['title'] }}</h3>
+
+                <div class="muted">
+                    📍 {{ p['city'] }} |
+                    🏠 {{ p['property_type'] or 'ملک' }}
+                </div>
+
+                <div class="muted">
+                    📐 {{ p['area'] }} متر |
+                    🛏️ {{ p['rooms'] }} اتاق
+                </div>
+
+                <div class="price">{{ p['price'] }}</div>
+                <span class="btn">مشاهده جزئیات</span>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+        <div class="notice">آگهی‌ای پیدا نشد. عبارت دیگری را جست‌وجو کن.</div>
+    {% endif %}
+</div>
+
+<div style="text-align:center;margin:30px 0 60px">
+    <h2>ملک خودت را برای هزاران نفر معرفی کن!</h2>
+    <p class="muted">ثبت آگهی در املاکان ایران را شروع کن.</p>
+    <a href="/add" class="btn">➕ ثبت آگهی رایگان</a>
+</div>
+"""
+
+
+@app.route("/")
+def home():
+    search = request.args.get("q", "").strip()
+
+    db = get_db()
+
+    if search:
+        properties = db.execute("""
+            SELECT * FROM properties
+            WHERE title LIKE ?
+               OR city LIKE ?
+               OR property_type LIKE ?
+            ORDER BY id DESC
+        """, (
+            f"%{search}%",
+            f"%{search}%",
+            f"%{search}%"
+        )).fetchall()
+    else:
+        properties = db.execute(
+            "SELECT * FROM properties ORDER BY id DESC"
+        ).fetchall()
+
+    db.close()
+
+    return render_page(
+        HOME_HTML,
+        page_title="صفحه اصلی",
+        properties=properties,
+        search=search,
+        image_src=image_src
+    )
+
+
+# ==========================================
+# فرم کامل ثبت آگهی
+# ==========================================
+
+ADD_HTML = """
+<div class="form-card">
+    <h1>➕ ثبت آگهی ملک</h1>
+
+    <p class="muted">
+        اطلاعات ملک خود را با دقت وارد کن تا آگهی در سایت نمایش داده شود.
+    </p>
+
+    <div class="notice">
+        همه اطلاعات را درست وارد کن. عکس ملک باید حداکثر ۵ مگابایت باشد.
+    </div>
+
+    <form action="/add" method="POST" enctype="multipart/form-data">
+
+        <div class="form-grid">
+
+            <div class="field full">
+                <label>عنوان آگهی *</label>
+                <input name="title" required
+                       placeholder="مثلاً آپارتمان ۱۲۰ متری در تهران">
+            </div>
+
+            <div class="field">
+                <label>نوع ملک *</label>
+                <select name="property_type" required>
+                    <option value="آپارتمان">آپارتمان</option>
+                    <option value="خانه ویلایی">خانه ویلایی</option>
+                    <option value="زمین">زمین</option>
+                    <option value="مغازه">مغازه</option>
+                    <option value="دفتر کار">دفتر کار</option>
+                    <option value="باغ">باغ</option>
+                    <option value="سایر">سایر</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label>نوع معامله *</label>
+                <select name="kind" required>
+                    <option value="فروش">فروش</option>
+                    <option value="اجاره">اجاره</option>
+                    <option value="رهن">رهن</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label>استان و شهر *</label>
+                <input name="city" required placeholder="مثلاً تهران">
+            </div>
+
+            <div class="field">
+                <label>آدرس ملک</label>
+                <input name="address" placeholder="محله، خیابان و ...">
+            </div>
+
+            <div class="field">
+                <label>متراژ (متر مربع) *</label>
+                <input name="area" type="number" min="1" required>
+            </div>
+
+            <div class="field">
+                <label>تعداد اتاق</label>
+                <input name="rooms" type="number" min="0" value="0">
+            </div>
+
+            <div class="field">
+                <label>طبقه</label>
+                <input name="floor" placeholder="مثلاً طبقه سوم">
+            </div>
+
+            <div class="field">
+                <label>سن بنا (سال)</label>
+                <input name="building_age" type="number" min="0" value="0">
+            </div>
+
+            <div class="field">
+                <label>پارکینگ</label>
+                <select name="parking">
+                    <option value="دارد">دارد</option>
+                    <option value="ندارد">ندارد</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label>آسانسور</label>
+                <select name="elevator">
+                    <option value="دارد">دارد</option>
+                    <option value="ندارد">ندارد</option>
+                </select>
+            </div>
+
+            <div class="field">
+                <label>انباری</label>
+                <select name="warehouse">
+                    <option value="دارد">دارد</option>
+                    <option value="ندارد">ندارد</option>
+                </select>
+            </div>
+
+            <div class="field full">
+                <label>قیمت یا مبلغ معامله *</label>
+                <input name="price" required
+                       placeholder="مثلاً ۵ میلیارد تومان">
+            </div>
+
+            <div class="field full">
+                <label>عکس ملک</label>
+                <input
+                    type="file"
+                    name="image"
+                    id="imageInput"
+                    accept=".jpg,.jpeg,.png,.webp"
+                >
+                <img id="imagePreview" class="preview" alt="پیش‌نمایش عکس">
+                <small class="muted">
+                    فرمت‌های مجاز: JPG، JPEG، PNG و WEBP
+                </small>
+            </div>
+
+            <div class="field full">
+                <label>توضیحات کامل ملک</label>
+                <textarea name="description"
+                          placeholder="توضیحات ملک، امکانات، شرایط معامله و ..."></textarea>
+            </div>
+
+            <div class="field full">
+                <button class="btn" type="submit">
+                    ثبت نهایی آگهی
+                </button>
+            </div>
+
+        </div>
+    </form>
+</div>
+
+<script>
+const imageInput = document.getElementById("imageInput");
+const imagePreview = document.getElementById("imagePreview");
+
+imageInput.addEventListener("change", function() {
+    const file = this.files[0];
+
+    if (!file) {
+        imagePreview.style.display = "none";
+        return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+        alert("حجم عکس باید کمتر از ۵ مگابایت باشد.");
+        this.value = "";
+        imagePreview.style.display = "none";
+        return;
+    }
+
+    imagePreview.src = URL.createObjectURL(file);
+    imagePreview.style.display = "block";
+});
+</script>
+"""
+
+
+# ==========================================
+# ثبت آگهی در دیتابیس
+# ==========================================
 
 @app.route("/add", methods=["GET", "POST"])
 def add_property():
 
-    if request.method == "POST":
+    if request.method == "GET":
+        return render_page(
+            ADD_HTML,
+            page_title="ثبت آگهی"
+        )
 
-        title = request.form.get("title", "").strip()
-        city = request.form.get("city", "").strip()
-        price = request.form.get("price", "").strip()
-        image = request.form.get("image", "").strip()
-        description = request.form.get("description", "").strip()
-        kind = request.form.get("kind", "").strip()
+    title = request.form.get("title", "").strip()
+    city = request.form.get("city", "").strip()
+    price = request.form.get("price", "").strip()
+    area = request.form.get("area", "").strip()
+    rooms = request.form.get("rooms", "0").strip()
+    kind = request.form.get("kind", "فروش")
+    description = request.form.get("description", "").strip()
 
-        try:
-            area = int(request.form.get("area", "0"))
-            rooms = int(request.form.get("rooms", "0"))
+    property_type = request.form.get("property_type", "آپارتمان")
+    address = request.form.get("address", "").strip()
+    floor = request.form.get("floor", "").strip()
+    building_age = request.form.get("building_age", "").strip()
+    parking = request.form.get("parking", "ندارد")
+    elevator = request.form.get("elevator", "ندارد")
+    warehouse = request.form.get("warehouse", "ندارد")
 
-        except ValueError:
-            return "متراژ و تعداد اتاق باید عدد باشند.", 400
+    if not title or not city or not price or not area:
+        flash("لطفاً فیلدهای ضروری را تکمیل کن.")
+        return redirect(url_for("add_property"))
 
-        if not title or not city or not price or not image:
-            return "لطفاً تمام اطلاعات ضروری را وارد کنید.", 400
+    try:
+        if int(area) < 1 or int(rooms) < 0 or int(building_age or 0) < 0:
+            raise ValueError
+    except ValueError:
+        flash("متراژ، تعداد اتاق و سن بنا باید عدد معتبر باشند.")
+        return redirect(url_for("add_property"))
 
-        if area < 1 or rooms < 0:
-            return "متراژ یا تعداد اتاق نامعتبر است.", 400
+    image = ""
 
-        if kind not in ["فروش", "اجاره", "رهن"]:
-            return "نوع معامله نامعتبر است.", 400
+    uploaded_file = request.files.get("image")
 
-        if not image.startswith(("https://", "http://")):
-            return "لینک عکس معتبر نیست.", 400
+    if uploaded_file and uploaded_file.filename:
+        if not allowed_file(uploaded_file.filename):
+            flash("فرمت عکس مجاز نیست.")
+            return redirect(url_for("add_property"))
 
-        db = get_db()
+        extension = uploaded_file.filename.rsplit(".", 1)[1].lower()
+        filename = secure_filename(str(uuid.uuid4()) + "." + extension)
 
-        db.execute("""
-            INSERT INTO properties
-            (title, city, price, area, rooms, kind, image,
-             description, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        uploaded_file.save(
+            os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        )
+
+        image = "uploads/" + filename
+
+    db = get_db()
+
+    db.execute("""
+        INSERT INTO properties (
             title, city, price, area, rooms, kind,
-            image, description,
-            datetime.now().strftime("%Y-%m-%d")
-        ))
+            image, description, created_at,
+            property_type, address, floor, building_age,
+            parking, elevator, warehouse
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        title, city, price, area, rooms, kind,
+        image, description,
+        datetime.now().strftime("%Y-%m-%d"),
+        property_type, address, floor, building_age,
+        parking, elevator, warehouse
+    ))
 
-        db.commit()
-        db.close()
+    db.commit()
+    db.close()
 
-        return redirect(url_for("home"))
+    flash("آگهی با موفقیت ثبت شد.")
+    return redirect(url_for("home"))
 
-    return render_template_string(ADD_HTML)
 
+# ==========================================
+# صفحه جزئیات ملک
+# ==========================================
 
-# =====================================
-# PROPERTY DETAILS ROUTE
-# =====================================
+DETAIL_HTML = """
+<div class="detail-card">
+
+    <img class="detail-image"
+         src="{{ image_src(property) }}"
+         alt="{{ property['title'] }}">
+
+    <h1>{{ property['title'] }}</h1>
+
+    <span class="tag">{{ property['kind'] }}</span>
+
+    <div class="price">{{ property['price'] }}</div>
+
+    <div class="info-grid">
+
+        <div class="info-item">
+            <span>نوع ملک</span>
+            <strong>{{ property['property_type'] or 'ثبت نشده' }}</strong>
+        </div>
+
+        <div class="info-item">
+            <span>شهر</span>
+            <strong>{{ property['city'] }}</strong>
+        </div>
+
+        <div class="info-item">
+            <span>آدرس</span>
+            <strong>{{ property['address'] or 'ثبت نشده' }}</strong>
+        </div>
+
+        <div class="info-item">
+            <span>متراژ</span>
+            <strong>{{ property['area'] }} متر</strong>
+        </div>
+
+        <div class="info-item">
+            <span>تعداد اتاق</span>
+            <strong>{{ property['rooms'] }}</strong>
+        </div>
+
+        <div class="info-item">
+            <span>طبقه</span>
+            <strong>{{ property['floor'] or 'ثبت نشده' }}</strong>
+        </div>
+
+        <div class="info-item">
+            <span>سن بنا</span>
+            <strong>{{ property['building_age'] or 'ثبت نشده' }} سال</strong>
+        </div>
+
+        <div class="info-item">
+            <span>پارکینگ</span>
+            <strong>{{ property['parking'] or 'ثبت نشده' }}</strong>
+        </div>
+
+        <div class="info-item">
+            <span>آسانسور</span>
+            <strong>{{ property['elevator'] or 'ثبت نشده' }}</strong>
+        </div>
+
+        <div class="info-item">
+            <span>انباری</span>
+            <strong>{{ property['warehouse'] or 'ثبت نشده' }}</strong>
+        </div>
+
+        <div class="info-item">
+            <span>تاریخ ثبت</span>
+            <strong>{{ property['created_at'] }}</strong>
+        </div>
+
+    </div>
+
+    <h2>توضیحات ملک</h2>
+
+    <p style="line-height:2;color:var(--muted)">
+        {{ property['description'] or 'توضیحی ثبت نشده است.' }}
+    </p>
+
+    <a href="/" class="btn">بازگشت به صفحه اصلی</a>
+
+</div>
+"""
+
 
 @app.route("/property/<int:property_id>")
 def property_detail(property_id):
 
     db = get_db()
 
-    property_item = db.execute("""
-        SELECT * FROM properties
-        WHERE id = ?
-    """, (property_id,)).fetchone()
+    property_item = db.execute(
+        "SELECT * FROM properties WHERE id = ?",
+        (property_id,)
+    ).fetchone()
 
     db.close()
 
     if property_item is None:
-        return "ملک موردنظر پیدا نشد!", 404
+        return "ملک موردنظر پیدا نشد.", 404
 
-    return render_template_string(
+    return render_page(
         DETAIL_HTML,
-        p=property_item
+        page_title=property_item["title"],
+        property=property_item,
+        image_src=image_src
     )
 
 
-# =====================================
-# RUN APPLICATION
-# =====================================
+# ==========================================
+# مدیریت خطای حجم فایل
+# ==========================================
+
+@app.errorhandler(413)
+def file_too_large(error):
+    return render_page(
+        """
+        <div class="form-card">
+            <h2>حجم فایل بیش از حد مجاز است!</h2>
+            <p>لطفاً عکسی با حجم کمتر از ۵ مگابایت انتخاب کن.</p>
+            <a href="/add" class="btn">بازگشت به ثبت آگهی</a>
+        </div>
+        """,
+        page_title="حجم فایل زیاد است"
+    ), 413
+
+
+# ==========================================
+# اجرای برنامه
+# ==========================================
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 5000)),
+        debug=False
+    )

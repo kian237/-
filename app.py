@@ -1,5 +1,6 @@
 
 
+
 from flask import Flask, request, redirect, url_for, render_template_string
 import sqlite3
 from datetime import datetime
@@ -8,14 +9,14 @@ app = Flask(__name__)
 DATABASE = "amlakan.db"
 
 
-# -----------------------------
-# Database
-# -----------------------------
+# =====================================
+# DATABASE
+# =====================================
 
 def get_db():
-    connection = sqlite3.connect(DATABASE)
-    connection.row_factory = sqlite3.Row
-    return connection
+    db = sqlite3.connect(DATABASE)
+    db.row_factory = sqlite3.Row
+    return db
 
 
 def init_db():
@@ -85,9 +86,9 @@ def init_db():
 init_db()
 
 
-# -----------------------------
-# Design
-# -----------------------------
+# =====================================
+# CSS
+# =====================================
 
 STYLE = """
 <style>
@@ -99,6 +100,8 @@ STYLE = """
     --gold: #e8bd63;
     --text: #ffffff;
     --muted: #a7afbd;
+    --header-bg: #080b10ee;
+    --input-bg: #0c111a;
 }
 
 * {
@@ -111,7 +114,7 @@ body {
     background: var(--bg);
     color: var(--text);
     direction: rtl;
-    transition: background-color 2s;
+    transition: background .25s, color .25s;
 }
 
 a {
@@ -128,7 +131,7 @@ a {
 header {
     padding: 15px 0;
     border-bottom: 1px solid #ffffff14;
-    background: #080b10dd;
+    background: var(--header-bg);
     position: sticky;
     top: 0;
     z-index: 10;
@@ -171,11 +174,7 @@ header {
     color: var(--gold);
 }
 
-/* Modern compact buttons */
-
-.btn,
-button,
-a.button {
+.btn, button, a.button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -183,28 +182,18 @@ a.button {
     border: none;
     border-radius: 9px;
     padding: 8px 14px;
-    background: linear-gradient(135deg, #f4d58d, #bd8c37);
+    background: linear-gradient(135deg, var(--gold), #bd8c37);
     color: #17120a;
     font-family: inherit;
     font-size: 12px;
     font-weight: 700;
     cursor: pointer;
-    transition: transform .2s ease,
-                box-shadow .2s ease,
-                filter .2s ease;
+    transition: .2s;
 }
 
-.btn:hover,
-button:hover,
-a.button:hover {
+.btn:hover, button:hover, a.button:hover {
     transform: translateY(-2px);
-    box-shadow: 0 5px 16px #d7a94c30;
-    filter: brightness(1.06);
-}
-
-.btn:active,
-button:active {
-    transform: scale(.97);
+    box-shadow: 0 5px 16px #0004;
 }
 
 .hero {
@@ -358,8 +347,8 @@ button:active {
     padding: 11px;
     border-radius: 9px;
     border: 1px solid #ffffff20;
-    background: #0c111a;
-    color: white;
+    background: var(--input-bg);
+    color: var(--text);
     font-family: inherit;
     font-size: 13px;
     outline: none;
@@ -367,7 +356,7 @@ button:active {
 
 .form-box label {
     font-size: 13px;
-    color: #d9dce2;
+    color: var(--text);
 }
 
 .form-box textarea {
@@ -424,7 +413,7 @@ button:active {
 
 .description {
     line-height: 2.2;
-    color: #d1d5dc;
+    color: var(--text);
 }
 
 footer {
@@ -439,6 +428,83 @@ footer {
     text-align: center;
     color: var(--muted);
     padding: 50px 10px;
+}
+
+/* Personal theme panel */
+
+.theme-toggle {
+    white-space: nowrap;
+}
+
+.theme-panel {
+    position: fixed;
+    top: 82px;
+    left: 4%;
+    z-index: 30;
+    width: min(340px, 92vw);
+    padding: 20px;
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid #ffffff25;
+    border-radius: 16px;
+    box-shadow: 0 18px 50px #0008;
+    display: none;
+}
+
+.theme-panel.open {
+    display: block;
+}
+
+.theme-panel h3 {
+    margin: 0 0 14px;
+    color: var(--gold);
+}
+
+.theme-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 12px 0;
+    font-size: 13px;
+}
+
+.theme-panel input[type="color"] {
+    width: 52px;
+    height: 36px;
+    padding: 2px;
+    border: 1px solid #ffffff30;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.theme-presets {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 14px 0;
+}
+
+.theme-preset {
+    min-height: 36px;
+    border: 1px solid #ffffff30;
+    border-radius: 8px;
+    padding: 6px;
+    color: white;
+    font-family: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.theme-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.theme-actions button {
+    flex: 1;
 }
 
 @media(max-width: 650px) {
@@ -458,21 +524,18 @@ footer {
         padding: 19px;
     }
 
-    .btn,
-    button,
-    a.button {
+    .btn, button, a.button {
         padding: 7px 12px;
         font-size: 12px;
-        border-radius: 8px;
     }
 }
 </style>
 """
 
 
-# -----------------------------
-# Header
-# -----------------------------
+# =====================================
+# HEADER
+# =====================================
 
 HEADER = """
 <header>
@@ -528,19 +591,97 @@ HEADER = """
             <a href="/add">ثبت آگهی</a>
         </nav>
 
-        <a href="/add" class="btn">ثبت آگهی جدید</a>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+
+            <button type="button"
+                    class="btn theme-toggle"
+                    id="themeToggle">
+                🎨 رنگ سایت
+            </button>
+
+            <a href="/add" class="btn">
+                ثبت آگهی جدید
+            </a>
+
+        </div>
 
     </div>
 </header>
+
+<div class="theme-panel" id="themePanel">
+
+    <h3>تنظیمات ظاهر سایت 🎨</h3>
+
+    <div class="theme-row">
+        <label for="themeBg">رنگ پس‌زمینه</label>
+        <input type="color" id="themeBg" value="#0b0e13">
+    </div>
+
+    <div class="theme-row">
+        <label for="themeCard">رنگ کارت‌ها</label>
+        <input type="color" id="themeCard" value="#151b25">
+    </div>
+
+    <div class="theme-row">
+        <label for="themeAccent">رنگ اصلی و دکمه‌ها</label>
+        <input type="color" id="themeAccent" value="#e8bd63">
+    </div>
+
+    <div class="theme-row">
+        <label for="themeText">رنگ نوشته‌ها</label>
+        <input type="color" id="themeText" value="#ffffff">
+    </div>
+
+    <div class="theme-presets">
+
+        <button class="theme-preset" data-theme="gold"
+                style="background:#a77a2c">طلایی</button>
+
+        <button class="theme-preset" data-theme="blue"
+                style="background:#2468c5">آبی</button>
+
+        <button class="theme-preset" data-theme="green"
+                style="background:#21845a">سبز</button>
+
+        <button class="theme-preset" data-theme="purple"
+                style="background:#7042c7">بنفش</button>
+
+        <button class="theme-preset" data-theme="pink"
+                style="background:#bd315e">صورتی</button>
+
+        <button class="theme-preset" data-theme="orange"
+                style="background:#d35a25">نارنجی</button>
+
+    </div>
+
+    <div class="theme-actions">
+
+        <button type="button" class="btn" id="themeReset">
+            رنگ پیش‌فرض
+        </button>
+
+        <button type="button" class="btn" id="themeClose">
+            بستن
+        </button>
+
+    </div>
+
+    <p class="muted">
+        تنظیمات فقط در مرورگر شما ذخیره می‌شود.
+    </p>
+
+</div>
 """
 
 
-# -----------------------------
-# Scripts
-# -----------------------------
+# =====================================
+# JAVASCRIPT
+# =====================================
 
 SCRIPTS = """
 <script>
+
+// تغییر رنگ لوگو
 
 const logoColors = [
     ["#f5d58c", "#b47d29"],
@@ -555,6 +696,7 @@ const logoColors = [
 let logoIndex = 0;
 
 setInterval(() => {
+
     logoIndex = (logoIndex + 1) % logoColors.length;
 
     const stop1 = document.getElementById("logoStop1");
@@ -564,46 +706,266 @@ setInterval(() => {
         stop1.setAttribute("stop-color", logoColors[logoIndex][0]);
         stop2.setAttribute("stop-color", logoColors[logoIndex][1]);
     }
+
 }, 5000);
 
 
-const backgrounds = [
-    "#0b0e13",
-    "#101a25",
-    "#191426",
-    "#1c1911",
-    "#101e1c",
-    "#20151b"
-];
+// رنگ‌های پیش‌فرض
 
-let bgIndex = 0;
+const defaultTheme = {
+    bg: "#0b0e13",
+    card: "#151b25",
+    accent: "#e8bd63",
+    text: "#ffffff"
+};
 
-setInterval(() => {
-    bgIndex = (bgIndex + 1) % backgrounds.length;
 
-    document.documentElement.style.setProperty(
-        "--bg",
-        backgrounds[bgIndex]
+// قالب‌های آماده
+
+const themePresets = {
+
+    gold: {
+        bg: "#0b0e13",
+        card: "#151b25",
+        accent: "#e8bd63",
+        text: "#ffffff"
+    },
+
+    blue: {
+        bg: "#0b1422",
+        card: "#14243a",
+        accent: "#58a6ff",
+        text: "#f4f8ff"
+    },
+
+    green: {
+        bg: "#0d1b16",
+        card: "#183027",
+        accent: "#63d69a",
+        text: "#f1fff7"
+    },
+
+    purple: {
+        bg: "#171126",
+        card: "#251a3b",
+        accent: "#bd9aff",
+        text: "#fbf7ff"
+    },
+
+    pink: {
+        bg: "#21121a",
+        card: "#351d2a",
+        accent: "#ff8eb5",
+        text: "#fff5f8"
+    },
+
+    orange: {
+        bg: "#21170f",
+        card: "#352519",
+        accent: "#ffb36b",
+        text: "#fff8f0"
+    }
+
+};
+
+
+// عناصر پنل
+
+const themePanel = document.getElementById("themePanel");
+const themeToggle = document.getElementById("themeToggle");
+
+const themeInputs = {
+    bg: document.getElementById("themeBg"),
+    card: document.getElementById("themeCard"),
+    accent: document.getElementById("themeAccent"),
+    text: document.getElementById("themeText")
+};
+
+
+// اعمال رنگ‌ها
+
+function applyTheme(theme, save = true) {
+
+    const root = document.documentElement;
+
+    root.style.setProperty("--bg", theme.bg);
+    root.style.setProperty("--card", theme.card);
+    root.style.setProperty("--gold", theme.accent);
+    root.style.setProperty("--text", theme.text);
+
+    root.style.setProperty(
+        "--muted",
+        theme.text === "#ffffff" ? "#a7afbd" : theme.text + "bb"
     );
-}, 30000);
+
+    root.style.setProperty("--header-bg", theme.bg + "ee");
+    root.style.setProperty("--input-bg", theme.bg);
+
+    Object.keys(themeInputs).forEach(key => {
+        if (themeInputs[key]) {
+            themeInputs[key].value = theme[key];
+        }
+    });
+
+    if (save) {
+        try {
+            localStorage.setItem(
+                "amlakan_personal_theme",
+                JSON.stringify(theme)
+            );
+        } catch (error) {
+            console.warn("ذخیره تنظیمات ممکن نشد.", error);
+        }
+    }
+
+}
+
+
+// بارگذاری رنگ ذخیره‌شده
+
+let savedTheme = defaultTheme;
+
+try {
+
+    const storedTheme = JSON.parse(
+        localStorage.getItem("amlakan_personal_theme") || "null"
+    );
+
+    if (
+        storedTheme &&
+        ["bg", "card", "accent", "text"].every(key =>
+            typeof storedTheme[key] === "string" &&
+            /^#[0-9a-fA-F]{6}$/.test(storedTheme[key])
+        )
+    ) {
+        savedTheme = storedTheme;
+    }
+
+} catch (error) {
+    console.log("تنظیمات قبلی پیدا نشد.");
+}
+
+applyTheme(savedTheme, false);
+
+
+// باز و بسته کردن پنل
+
+if (themeToggle && themePanel) {
+
+    themeToggle.addEventListener("click", () => {
+
+        const opened = themePanel.classList.toggle("open");
+
+        themeToggle.setAttribute(
+            "aria-expanded",
+            String(opened)
+        );
+
+    });
+
+}
+
+
+// تغییر دستی رنگ
+
+Object.keys(themeInputs).forEach(key => {
+
+    if (!themeInputs[key]) return;
+
+    themeInputs[key].addEventListener("input", () => {
+
+        const current = {};
+
+        Object.keys(themeInputs).forEach(k => {
+            current[k] = themeInputs[k].value;
+        });
+
+        applyTheme(current);
+
+    });
+
+});
+
+
+// قالب‌های آماده
+
+document.querySelectorAll(".theme-preset").forEach(button => {
+
+    button.addEventListener("click", () => {
+
+        const preset = themePresets[button.dataset.theme];
+
+        if (preset) {
+            applyTheme(preset);
+        }
+
+    });
+
+});
+
+
+// بازگشت به رنگ پیش‌فرض
+
+document.getElementById("themeReset")?.addEventListener(
+    "click",
+    () => {
+        applyTheme(defaultTheme);
+    }
+);
+
+
+// بستن پنل
+
+document.getElementById("themeClose")?.addEventListener(
+    "click",
+    () => {
+
+        themePanel?.classList.remove("open");
+
+        themeToggle?.setAttribute("aria-expanded", "false");
+
+    }
+);
+
+
+// بستن پنل با کلیک بیرون آن
+
+document.addEventListener("click", event => {
+
+    if (
+        themePanel &&
+        themeToggle &&
+        !themePanel.contains(event.target) &&
+        !themeToggle.contains(event.target)
+    ) {
+
+        themePanel.classList.remove("open");
+
+        themeToggle.setAttribute("aria-expanded", "false");
+
+    }
+
+});
 
 </script>
 """
 
 
-# -----------------------------
-# Home page
-# -----------------------------
+# =====================================
+# HOME PAGE
+# =====================================
 
 HOME_HTML = """
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
+
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>املاکان ایران | خرید، فروش و اجاره ملک</title>
 """ + STYLE + """
 </head>
+
 <body>
 
 """ + HEADER + """
@@ -702,19 +1064,21 @@ HOME_HTML = """
 """
 
 
-# -----------------------------
-# Add property page
-# -----------------------------
+# =====================================
+# ADD PROPERTY PAGE
+# =====================================
 
 ADD_HTML = """
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
+
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ثبت آگهی | املاکان ایران</title>
 """ + STYLE + """
 </head>
+
 <body>
 
 """ + HEADER + """
@@ -740,10 +1104,12 @@ ADD_HTML = """
         <input name="price" required placeholder="مثلاً ۸ میلیارد تومان">
 
         <label>متراژ</label>
-        <input name="area" type="number" min="1" required placeholder="مثلاً ۱۵۰">
+        <input name="area" type="number" min="1"
+               required placeholder="مثلاً ۱۵۰">
 
         <label>تعداد اتاق</label>
-        <input name="rooms" type="number" min="0" required placeholder="مثلاً ۳">
+        <input name="rooms" type="number" min="0"
+               required placeholder="مثلاً ۳">
 
         <label>نوع معامله</label>
         <select name="kind" required>
@@ -773,19 +1139,21 @@ ADD_HTML = """
 """
 
 
-# -----------------------------
-# Property details
-# -----------------------------
+# =====================================
+# PROPERTY DETAILS
+# =====================================
 
 DETAIL_HTML = """
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
+
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ p.title }} | املاکان ایران</title>
 """ + STYLE + """
 </head>
+
 <body>
 
 """ + HEADER + """
@@ -852,9 +1220,9 @@ DETAIL_HTML = """
 """
 
 
-# -----------------------------
-# Home route
-# -----------------------------
+# =====================================
+# HOME ROUTE
+# =====================================
 
 @app.route("/")
 def home():
@@ -864,12 +1232,15 @@ def home():
     db = get_db()
 
     if query:
+
         properties = db.execute("""
             SELECT * FROM properties
             WHERE title LIKE ? OR city LIKE ?
             ORDER BY id DESC
         """, (f"%{query}%", f"%{query}%")).fetchall()
+
     else:
+
         properties = db.execute("""
             SELECT * FROM properties
             ORDER BY id DESC
@@ -884,9 +1255,9 @@ def home():
     )
 
 
-# -----------------------------
-# Add property route
-# -----------------------------
+# =====================================
+# ADD PROPERTY ROUTE
+# =====================================
 
 @app.route("/add", methods=["GET", "POST"])
 def add_property():
@@ -903,6 +1274,7 @@ def add_property():
         try:
             area = int(request.form.get("area", "0"))
             rooms = int(request.form.get("rooms", "0"))
+
         except ValueError:
             return "متراژ و تعداد اتاق باید عدد باشند.", 400
 
@@ -939,9 +1311,9 @@ def add_property():
     return render_template_string(ADD_HTML)
 
 
-# -----------------------------
-# Property detail route
-# -----------------------------
+# =====================================
+# PROPERTY DETAILS ROUTE
+# =====================================
 
 @app.route("/property/<int:property_id>")
 def property_detail(property_id):
@@ -964,9 +1336,9 @@ def property_detail(property_id):
     )
 
 
-# -----------------------------
-# Run application
-# -----------------------------
+# =====================================
+# RUN APPLICATION
+# =====================================
 
 if __name__ == "__main__":
     app.run(debug=False)
